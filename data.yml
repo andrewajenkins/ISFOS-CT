@@ -1,0 +1,30 @@
+trial_a:
+  simulation_time: 30
+  target_enrollment: 10
+  mean_interarrival_time: 1
+  dropout_rate: 0.4
+  inv_control:
+    reorder_point: 50
+    reorder_quantity: 100
+    lead_time: 5
+  manufacturer:
+    prod_rate: 5
+    capacity: 15
+    produce: 10
+  central_storage:
+    capacity: 30
+    initial_inventory: 10
+    initial_order: 20
+  regional_storage:
+    capacity: 15
+    initial_inventory: 10
+    initial_order: 5
+  dosage:
+    amount: 1
+    interval: 1
+  site:
+    capacity: 5
+  transit_times:
+    manufacturer_to_central_storage: 3
+    central_storage_to_regional_storage: 2
+    default: 1
