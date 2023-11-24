@@ -7,30 +7,54 @@ import matplotlib.pyplot as plt
 class ManufacturingFacility:
     def __init__(self, env, destination, production_rate, capacity, transit_times):
         self.env = env
+        self.name = "manufacturer"
         self.destination = destination
         self.transit_times = transit_times
         self.production_rate = production_rate  # units per day
-        self.capacity = simpy.Container(
-            env, init=0, capacity=capacity
-        )  # represents the on-hand inventory of drugs
+        self.inventory = simpy.Container(
+            env, init=10, capacity=capacity
+        )  # Drug inventory
         self.inventory_log = []
         self.log_inventory(0)  # Log initial state
 
     def produce_drug(self, quantity):
         """Simulates the production of the drug."""
-        production_time = quantity / self.production_rate
-        yield self.env.timeout(
-            production_time
-        )  # Simulates the passage of production time
-        yield self.capacity.put(
-            quantity
-        )  # Add the produced drugs to the facility's inventory
-        self.log_inventory(self.env.now)
-        print(f"Produced {quantity} units of the drug.")
+        while True:
+            # Wait for a day
+            production_time = quantity / self.production_rate
+            yield self.env.timeout(
+                production_time
+            )  # Simulates the passage of production time
+            yield self.inventory.put(
+                quantity
+            )  # Add the produced drugs to the facility's inventory
+            self.log_inventory(self.env.now)
+            print(f"Produced {quantity} units of the drug.")
+
+    def dispatch_drug(self, quantity):
+        # Check if we have enough drugs in inventory to fulfill the dispatch
+        if self.inventory.level >= quantity:
+            yield self.inventory.get(
+                quantity
+            )  # Update inventory to reflect the dispatch
+            print(
+                f"Dispatched {quantity} units of drug from {self.name} on day {self.env.now}."
+            )
+            self.log_inventory(self.env.now)
+            # Assuming a function to handle transportation and reception of the drugs at the destination
+            yield self.env.process(
+                transport_drug(
+                    self.env, self, self.destination, quantity, self.transit_times
+                )
+            )
+        else:
+            print(
+                f"Not enough inventory to dispatch {quantity} units on day {self.env.now}."
+            )
 
     def log_inventory(self, time):
         """Logs the current inventory level along with the simulation time."""
-        self.inventory_log.append((time, self.capacity.level))
+        self.inventory_log.append((time, self.inventory.level))
 
 
 class StorageFacility:
@@ -48,11 +72,6 @@ class StorageFacility:
         self.log_inventory(0)  # Log initial state
         self.on_order = 0
 
-    def order_drug(self, quantity):
-        """Processes an order and waits if necessary for stock to be available."""
-        yield self.inventory.get(quantity)
-        print(f"Order fulfilled for {quantity} units of the drug.")
-
     def receive_drug(self, quantity):
         """Receives a shipment of drugs and adds it to the inventory."""
         yield self.inventory.put(quantity)
@@ -67,7 +86,9 @@ class StorageFacility:
             yield self.inventory.get(
                 quantity
             )  # Update inventory to reflect the dispatch
-            print(f"Dispatched {quantity} units for drug on day {self.env.now}.")
+            print(
+                f"Dispatched {quantity} units of drug from {self.name} on day {self.env.now}."
+            )
             self.log_inventory(self.env.now)
             # Assuming a function to handle transportation and reception of the drugs at the destination
             yield self.env.process(
@@ -78,6 +99,17 @@ class StorageFacility:
         else:
             print(
                 f"Not enough inventory to dispatch {quantity} units on day {self.env.now}."
+            )
+
+    def log_inventory_daily(self):
+        """Logs the current inventory level at the end of each day."""
+        while True:
+            # Wait for a day
+            yield self.env.timeout(1)
+            # Log inventory at the end of the day
+            self.inventory_log.append((self.env.now, self.inventory.level))
+            print(
+                f"Inventory at {self.name} on day {self.env.now}: {self.inventory.level}"
             )
 
     def log_inventory(self, time):
@@ -116,11 +148,6 @@ class TrialSite:
         self.log_inventory(0)  # Log initial state
         self.on_order = 0
 
-    def request_resupply(self, storage_facility, quantity):
-        """Requests a resupply of drugs from a storage facility."""
-        self.env.process(storage_facility.order_drug(quantity))
-        print(f"Requested resupply of {quantity} units of the drug.")
-
     def receive_drug(self, quantity):
         """Receives a shipment of drugs."""
         yield self.inventory.put(quantity)
@@ -143,7 +170,7 @@ class TrialSite:
         if self.inventory.level >= amount:
             # Consume the drug from inventory
             yield self.inventory.get(amount)
-            print(f"Consumed {amount} units of drug on day {self.env.now}.")
+            # print(f"Consumed {amount} units of drug on day {self.env.now}.")
         else:
             print(
                 f"Not enough drug available to consume {amount} units on day {self.env.now}."
@@ -164,7 +191,7 @@ class TrialSite:
             if self.inventory.level >= amount:
                 # Consume the drug from inventory
                 yield self.inventory.get(amount)
-                print(f"Consumed {amount} units of drug on day {self.env.now}.")
+                # print(f"Consumed {amount} units of drug on day {self.env.now}.")
             else:
                 # Not enough drug available; raise a stockout error
                 raise ValueError(
@@ -173,7 +200,7 @@ class TrialSite:
 
             # Log the current inventory level after consumption
             self.log_inventory(self.env.now)
-            print(f"Drug consumed by patient on day {self.env.now}")
+            # print(f"Drug consumed by patient on day {self.env.now}")
 
     def receive_drug(self, quantity):
         """Receives a shipment of drugs."""
@@ -282,10 +309,9 @@ def transport_drug(env, source, destination, quantity, transit_times):
     """Simulates the transportation of drugs."""
     default_time = transit_times["default"]
     transport_time = transit_times.get(
-        source.name + "_to_" + destination.name, default_time
+        f"{source.name}_to_{destination.name}", default_time
     )
     yield env.timeout(transport_time)  # Represents transport delay
-    source.dispatch_drug(quantity)  # Get drugs from source
     yield env.process(destination.receive_drug(quantity))  # Add drugs to destination
     print(
         f"Transported {quantity} units of the drug from {source.name} to {destination.name} on day {env.now}."
@@ -306,73 +332,9 @@ def patient_enrollment(env, trial_site, mean_interarrival_time, dropout_rate, do
             trial_site.enroll_patient(
                 dosage
             )  # Add logic to handle patient enrollment and IMP demand
-            print(f"Patient enrolled on day {env.now}")
-        else:
-            print(f"Patient drop out on day {env.now}")
-
-
-def inventory_control(
-    env, trial_site, storage_facility, reorder_point, reorder_quantity, lead_time
-):
-    """Inventory control process for managing drug stock levels."""
-    while True:
-        # Forecast demand based on the number of patients and their dosage schedule
-        forecasted_demand = (
-            trial_site.patients
-            * trial_site.dosage_schedule.dose_amount
-            * trial_site.dosage_schedule.dose_interval
-        )
-
-        # Check if projected inventory is below reorder point
-        projected_inventory = trial_site.inventory.level - forecasted_demand
-        if projected_inventory < reorder_point:
-            print(
-                f"Forecasted stock low on day {env.now}, placing order for additional {reorder_quantity} units."
-            )
-            # Place the order with enough lead time before the stock is expected to run out
-            env.process(
-                place_order(
-                    env, trial_site, storage_facility, reorder_quantity, lead_time
-                )
-            )
-
-        # Inventory is checked at regular intervals, e.g., daily
-        yield env.timeout(1)
-
-
-def place_order(env, trial_site, storage_facility, quantity, lead_time):
-    """Place an order for additional stock with a certain lead time."""
-    # Wait for the lead time before receiving the order
-    yield env.timeout(lead_time)
-
-    # Receive the ordered stock
-    yield env.process(trial_site.receive_drug(quantity))
-
-
-def distribute_drug_manufacturer_to_storage(
-    env, manufacturer, central_storage, quantity, transit_times
-):
-    """Simulates the transportation of drugs from the manufacturer to the central storage."""
-    yield env.process(manufacturer.produce_drug(quantity))
-    yield env.timeout(transit_times["manufacturer_to_central_storage"])
-
-    yield env.process(central_storage.receive_drug(quantity))
-    print(
-        f"{quantity} units of the drug have been transported from the manufacturer to central storage on day {env.now}."
-    )
-
-
-def distribute_drug_storage_to_storage(
-    env, central_storage, regional_storage, quantity, transit_times
-):
-    """Simulates the transportation of drugs from the central storage to a regional storage."""
-    yield central_storage.inventory.get(quantity)
-    yield env.timeout(transit_times["central_storage_to_regional_storage"])
-
-    yield env.process(regional_storage.receive_drug(quantity))
-    print(
-        f"{quantity} units of the drug have been transported from central storage to {regional_storage.name} on day {env.now}."
-    )
+            # print(f"Patient enrolled on day {env.now}")
+        # else:
+        # print(f"Patient drop out on day {env.now}")
 
 
 def plot_inventory_levels(inventory_log, title):
@@ -439,7 +401,16 @@ def run_simulation():
         transit_times=config["transit_times"],
     )
 
-    regional_storage_inventory_controller = InventoryController(
+    InventoryController(
+        env=env,
+        facility=central_storage,
+        supplier=manufacturer,
+        reorder_point=config["central_storage"]["reorder_point"],
+        reorder_quantity=config["central_storage"]["reorder_quantity"],
+        lead_time=config["transit_times"]["manufacturer_to_central_storage"],
+        forecast_window=3,
+    )
+    InventoryController(
         env=env,
         facility=regional_storage,
         supplier=central_storage,
@@ -448,7 +419,7 @@ def run_simulation():
         lead_time=config["transit_times"]["central_storage_to_regional_storage"],
         forecast_window=3,
     )
-    trial_site_inventory_controller = InventoryController(
+    InventoryController(
         env=env,
         facility=trial_site,
         supplier=regional_storage,
@@ -457,39 +428,6 @@ def run_simulation():
         lead_time=config["transit_times"]["regional_storage_to_trial_site"],
         forecast_window=3,
     )
-
-    # Schedule the initial distribution of drugs from manufacturer to central storage
-    env.process(
-        distribute_drug_manufacturer_to_storage(
-            env,
-            manufacturer,
-            central_storage,
-            config["central_storage"]["initial_order"],
-            config["transit_times"],
-        )
-    )
-
-    # Schedule the initial distribution from central storage to regional storage
-    env.process(
-        distribute_drug_storage_to_storage(
-            env,
-            central_storage,
-            regional_storage,
-            config["regional_storage"]["initial_order"],
-            config["transit_times"],
-        )
-    )
-
-    # env.process(
-    #     inventory_control(
-    #         env,
-    #         trial_site,
-    #         central_storage,
-    #         config["inv_control"]["reorder_point"],
-    #         config["inv_control"]["reorder_quantity"],
-    #         config["inv_control"]["lead_time"],
-    #     )
-    # )
 
     # Start the enrollment process
     env.process(
