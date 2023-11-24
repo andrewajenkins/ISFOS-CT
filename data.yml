@@ -4,8 +4,8 @@ trial_a:
   mean_interarrival_time: 1
   dropout_rate: 0.4
   inv_control:
-    reorder_point: 50
-    reorder_quantity: 100
+    reorder_point: 5
+    reorder_quantity: 10
     lead_time: 5
   manufacturer:
     prod_rate: 5
