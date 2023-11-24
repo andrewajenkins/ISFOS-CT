@@ -24,6 +24,7 @@ trial_a:
     interval: 1
   site:
     capacity: 5
+    initial_inventory: 5
   transit_times:
     manufacturer_to_central_storage: 3
     central_storage_to_regional_storage: 2

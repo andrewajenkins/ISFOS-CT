@@ -1,6 +1,7 @@
 import simpy
 import random
 import yaml
+import matplotlib.pyplot as plt
 
 
 class ManufacturingFacility:
@@ -10,6 +11,8 @@ class ManufacturingFacility:
         self.capacity = simpy.Container(
             env, init=0, capacity=capacity
         )  # represents the on-hand inventory of drugs
+        self.inventory_log = []
+        self.log_inventory(0)  # Log initial state
 
     def produce_drug(self, quantity):
         """Simulates the production of the drug."""
@@ -20,7 +23,12 @@ class ManufacturingFacility:
         yield self.capacity.put(
             quantity
         )  # Add the produced drugs to the facility's inventory
+        self.log_inventory(self.env.now)
         print(f"Produced {quantity} units of the drug.")
+
+    def log_inventory(self, time):
+        """Logs the current inventory level along with the simulation time."""
+        self.inventory_log.append((time, self.capacity.level))
 
 
 class StorageFacility:
@@ -30,6 +38,8 @@ class StorageFacility:
         self.inventory = simpy.Container(
             env, init=initial_inventory, capacity=capacity
         )  # Drug inventory
+        self.inventory_log = []
+        self.log_inventory(0)  # Log initial state
 
     def order_drug(self, quantity):
         """Processes an order and waits if necessary for stock to be available."""
@@ -40,11 +50,17 @@ class StorageFacility:
         """Receives a shipment of drugs and adds it to the inventory."""
         yield self.inventory.put(quantity)
         print(f"Received an order of {quantity} units of the drug. {self.env.now}")
+        self.log_inventory(self.env.now)
 
     def dispatch_drug(self, quantity):
         """Dispatch drugs for transportation."""
         yield self.inventory.get(quantity)
         print(f"Dispatched {quantity} units for drug on day {self.env.now}.")
+        self.log_inventory(self.env.now)
+
+    def log_inventory(self, time):
+        """Logs the current inventory level along with the simulation time."""
+        self.inventory_log.append((time, self.inventory.level))
 
 
 # Subclass for RegionalStorageFacility
@@ -60,11 +76,13 @@ class CentralStorageFacility(StorageFacility):
 
 
 class TrialSite:
-    def __init__(self, env, dosage_schedule, capacity):
+    def __init__(self, env, initial_inventory, dosage_schedule, capacity):
         self.env = env
         self.patients = 0
         self.dosage_schedule = dosage_schedule  # Dosage per patient
-        self.inventory = simpy.Container(env, init=0, capacity=capacity)
+        self.inventory = simpy.Container(env, init=initial_inventory, capacity=capacity)
+        self.inventory_log = []
+        self.log_inventory(0)  # Log initial state
 
     def request_resupply(self, storage_facility, quantity):
         """Requests a resupply of drugs from a storage facility."""
@@ -75,14 +93,33 @@ class TrialSite:
         """Receives a shipment of drugs."""
         yield self.inventory.put(quantity)
         print(f"Trial site received {quantity} units of the drug.")
+        self.log_inventory(self.env.now)
 
-    def enroll_patient(self):
+    def enroll_patient(self, dosage):
         """Handle the logistics of enrolling a new patient."""
         self.patients += 1
-        dosage_schedule = DosageSchedule(dose_amount=50, dose_interval=7)
+        dosage_schedule = DosageSchedule(
+            dose_amount=dosage["amount"], dose_interval=dosage["interval"]
+        )
         self.env.process(
             self.patient_demand(dosage_schedule)
         )  # Start the demand process for the new patient
+
+    def consume_drug(self, amount):
+        """Logic to consume drug and potentially trigger resupply."""
+        # Check if enough drug is available for consumption
+        if self.inventory.level >= amount:
+            # Consume the drug from inventory
+            yield self.inventory.get(amount)
+            print(f"Consumed {amount} units of drug on day {self.env.now}.")
+        else:
+            print(
+                f"Not enough drug available to consume {amount} units on day {self.env.now}."
+            )
+            # You may want to add logic here to handle the case when there's not enough drug
+
+        # Log the current inventory level after consumption
+        self.log_inventory(self.env.now)
 
     def patient_demand(self, dosage_schedule):
         """Simulates the drug demand for an individual patient."""
@@ -90,19 +127,31 @@ class TrialSite:
             # Wait until the next dosage is due
             yield self.env.timeout(dosage_schedule.get_next_dose_time())
 
-            # Consume drug and generate demand
-            self.consume_drug(dosage_schedule.next_dose())
-            print(f"Drug consumed by patient on day {self.env.now}")
+            # Consume drug, generate demand and heck if enough drug is available for consumption
+            amount = dosage_schedule.next_dose()
+            if self.inventory.level >= amount:
+                # Consume the drug from inventory
+                yield self.inventory.get(amount)
+                print(f"Consumed {amount} units of drug on day {self.env.now}.")
+            else:
+                print(
+                    f"Not enough drug available to consume {amount} units on day {self.env.now}."
+                )
+                # You may want to add logic here to handle the case when there's not enough drug
 
-    def consume_drug(self, amount):
-        """Logic to consume drug and potentially trigger resupply."""
-        # This would interact with inventory management
-        pass
+            # Log the current inventory level after consumption
+            self.log_inventory(self.env.now)
+            print(f"Drug consumed by patient on day {self.env.now}")
 
     def receive_drug(self, quantity):
         """Receives a shipment of drugs."""
         yield self.inventory.put(quantity)
         print(f"Received {quantity} units of drug on day {self.env.now}.")
+        self.log_inventory(self.env.now)
+
+    def log_inventory(self, time):
+        """Logs the current inventory level along with the simulation time."""
+        self.inventory_log.append((time, self.inventory.level))
 
 
 class DosageSchedule:
@@ -115,7 +164,7 @@ class DosageSchedule:
         """
         self.dose_amount = dose_amount
         self.dose_interval = dose_interval
-        self.next_dose_time = 0  # Tracks the time until the next dose for a patient
+        self.next_dose_time = 1  # Tracks the time until the next dose for a patient
 
     def next_dose(self):
         """
@@ -147,7 +196,7 @@ def transport_drug(env, source, destination, quantity, transit_times):
     )
 
 
-def patient_enrollment(env, trial_site, mean_interarrival_time, dropout_rate):
+def patient_enrollment(env, trial_site, mean_interarrival_time, dropout_rate, dosage):
     """Simulates patient enrollment over time."""
     while True:
         # Simulate the time until the next patient enrollment
@@ -158,7 +207,9 @@ def patient_enrollment(env, trial_site, mean_interarrival_time, dropout_rate):
 
         # Enroll the patient
         if random.random() >= dropout_rate:
-            trial_site.enroll_patient()  # Add logic to handle patient enrollment and IMP demand
+            trial_site.enroll_patient(
+                dosage
+            )  # Add logic to handle patient enrollment and IMP demand
             print(f"Patient enrolled on day {env.now}")
         else:
             print(f"Patient drop out on day {env.now}")
@@ -215,6 +266,16 @@ def distribute_drug_storage_to_storage(
     )
 
 
+def plot_inventory_levels(inventory_log, title):
+    times, levels = zip(*inventory_log)  # Unzip the log into times and levels
+    plt.plot(times, levels, marker="o")
+    plt.title(title)
+    plt.xlabel("Simulation Time (days)")
+    plt.ylabel("Inventory Level (units)")
+    plt.grid(True)
+    plt.show()
+
+
 def run_simulation():
     env = simpy.Environment()
 
@@ -245,7 +306,12 @@ def run_simulation():
         dose_amount=config["dosage"]["amount"],
         dose_interval=config["dosage"]["interval"],
     )
-    trial_site = TrialSite(env, dosage_schedule, capacity=config["site"]["capacity"])
+    trial_site = TrialSite(
+        env,
+        initial_inventory=config["site"]["initial_inventory"],
+        dosage_schedule=dosage_schedule,
+        capacity=config["site"]["capacity"],
+    )
 
     # Schedule the initial distribution of drugs from manufacturer to central storage
     env.process(
@@ -272,13 +338,34 @@ def run_simulation():
     # Start the enrollment process
     env.process(
         patient_enrollment(
-            env, trial_site, config["mean_interarrival_time"], config["dropout_rate"]
+            env,
+            trial_site,
+            config["mean_interarrival_time"],
+            config["dropout_rate"],
+            config["dosage"],
         )
     )
     # Start production and transportation processes
     env.process(manufacturer.produce_drug(config["manufacturer"]["produce"]))
 
     env.run(until=config["simulation_time"])  # for example, simulating for one year
+
+    manufacturer_inventory_levels = manufacturer.inventory_log
+    central_storage_inventory_levels = central_storage.inventory_log
+    regional_storage_inventory_levels = regional_storage.inventory_log
+    site_inventory_levels = trial_site.inventory_log
+
+    # Call the plotting function for each facility
+    # plot_inventory_levels(
+    #     manufacturer_inventory_levels, "Manufacturer Inventory Levels"
+    # )
+    # plot_inventory_levels(
+    #     central_storage_inventory_levels, "Central Storage Inventory Levels"
+    # )
+    # plot_inventory_levels(
+    #     regional_storage_inventory_levels, "Regional Storage Inventory Levels"
+    # )
+    plot_inventory_levels(site_inventory_levels, "Trial Site Inventory Levels")
 
 
 run_simulation()
