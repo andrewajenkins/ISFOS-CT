@@ -58,16 +58,8 @@ class Facility:
 
 class ManufacturingFacility(Facility):
     def __init__(self, env, destination, production_rate, capacity, transit_times):
-        self.env = env
-        self.name = "manufacturer"
-        self.destination = destination
-        self.transit_times = transit_times
+        super().__init__(env, "manufacturer", capacity, destination, 0, transit_times)
         self.production_rate = production_rate  # units per day
-        self.inventory = simpy.Container(
-            env, init=10, capacity=capacity
-        )  # Drug inventory
-        self.inventory_log = []
-        self.log_inventory(0)  # Log initial state
 
     def produce_drug(self, quantity):
         """Simulates the production of the drug."""
@@ -83,88 +75,22 @@ class ManufacturingFacility(Facility):
             self.log_inventory(self.env.now)
             print(f"Produced {quantity} units of the drug.")
 
-    def dispatch_drug(self, quantity):
-        # Check if we have enough drugs in inventory to fulfill the dispatch
-        if self.inventory.level >= quantity:
-            yield self.inventory.get(
-                quantity
-            )  # Update inventory to reflect the dispatch
-            print(
-                f"Dispatched {quantity} units of drug from {self.name} on day {self.env.now}."
-            )
-            self.log_inventory(self.env.now)
-            # Assuming a function to handle transportation and reception of the drugs at the destination
-            yield self.env.process(
-                transport_drug(
-                    self.env, self, self.destination, quantity, self.transit_times
-                )
-            )
-        else:
-            print(
-                f"Not enough inventory to dispatch {quantity} units on day {self.env.now}."
-            )
-
 
 class StorageFacility(Facility):
     def __init__(
         self, env, name, destination, initial_inventory, capacity, transit_times
     ):
-        self.env = env
-        self.name = name
-        self.destination = destination
-        self.transit_times = transit_times
-        self.inventory = simpy.Container(
-            env, init=initial_inventory, capacity=capacity
-        )  # Drug inventory
-        self.inventory_log = []
-        self.log_inventory(0)  # Log initial state
-        self.on_order = 0
-
-    def receive_drug(self, quantity):
-        """Receives a shipment of drugs and adds it to the inventory."""
-        yield self.inventory.put(quantity)
-        print(f"Received an order of {quantity} units of the drug. {self.env.now}")
-        self.log_inventory(self.env.now)
-        # Once received, update the `on_order` to reflect that this order has been fulfilled
-        self.on_order -= quantity
-
-    def dispatch_drug(self, quantity):
-        # Check if we have enough drugs in inventory to fulfill the dispatch
-        if self.inventory.level >= quantity:
-            yield self.inventory.get(
-                quantity
-            )  # Update inventory to reflect the dispatch
-            print(
-                f"Dispatched {quantity} units of drug from {self.name} on day {self.env.now}."
-            )
-            self.log_inventory(self.env.now)
-            # Assuming a function to handle transportation and reception of the drugs at the destination
-            yield self.env.process(
-                transport_drug(
-                    self.env, self, self.destination, quantity, self.transit_times
-                )
-            )
-        else:
-            print(
-                f"Not enough inventory to dispatch {quantity} units on day {self.env.now}."
-            )
-
-    def log_inventory(self, time):
-        """Logs the current inventory level along with the simulation time."""
-        self.inventory_log.append((time, self.inventory.level))
+        super().__init__(
+            env, name, capacity, destination, initial_inventory, transit_times
+        )
 
 
 class TrialSite(Facility):
     def __init__(self, env, initial_inventory, dosage_schedule, capacity):
-        self.env = env
-        self.name = "trial_site"
+        super().__init__(env, "trial_site", capacity, None, initial_inventory, None)
         self.patients = 0
         self.dosage_schedule = dosage_schedule  # Dosage per patient
-        self.inventory = simpy.Container(env, init=initial_inventory, capacity=capacity)
-        self.inventory_log = []
-        self.log_inventory(0)  # Log initial state
         self.patient_log = []
-        self.on_order = 0
 
     def enroll_patient(self, dosage):
         """Handle the logistics of enrolling a new patient."""
@@ -198,16 +124,6 @@ class TrialSite(Facility):
             # Log the current inventory level after consumption
             self.log_inventory(self.env.now)
             # print(f"Drug consumed by patient on day {self.env.now}")
-
-    def receive_drug(self, quantity):
-        """Receives a shipment of drugs."""
-        yield self.inventory.put(quantity)
-        print(f"Received {quantity} units of drug on day {self.env.now}.")
-        self.log_inventory(self.env.now)
-
-    def log_inventory(self, time):
-        """Logs the current inventory level along with the simulation time."""
-        self.inventory_log.append((time, self.inventory.level))
 
 
 class DosageSchedule:
