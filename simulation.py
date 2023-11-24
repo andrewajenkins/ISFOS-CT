@@ -134,10 +134,10 @@ class TrialSite:
                 yield self.inventory.get(amount)
                 print(f"Consumed {amount} units of drug on day {self.env.now}.")
             else:
-                print(
-                    f"Not enough drug available to consume {amount} units on day {self.env.now}."
+                # Not enough drug available; raise a stockout error
+                raise ValueError(
+                    f"Stockout occurred on day {self.env.now}: unable to consume {amount} units of drug."
                 )
-                # You may want to add logic here to handle the case when there's not enough drug
 
             # Log the current inventory level after consumption
             self.log_inventory(self.env.now)
@@ -216,28 +216,41 @@ def patient_enrollment(env, trial_site, mean_interarrival_time, dropout_rate, do
 
 
 def inventory_control(
-    env, reorder_point, reorder_quantity, storage_facility, lead_time
+    env, trial_site, storage_facility, reorder_point, reorder_quantity, lead_time
 ):
     """Inventory control process for managing drug stock levels."""
     while True:
-        # Check if inventory is below reorder point and order new stock if needed
-        if storage_facility.inventory.level < reorder_point:
-            print(
-                f"Inventory low at day {env.now}, reordering {reorder_quantity} units."
-            )
-            env.process(place_order(env, storage_facility, reorder_quantity, lead_time))
+        # Forecast demand based on the number of patients and their dosage schedule
+        forecasted_demand = (
+            trial_site.patients
+            * trial_site.dosage_schedule.dose_amount
+            * trial_site.dosage_schedule.dose_interval
+        )
 
-        # Check inventory stock once a day
+        # Check if projected inventory is below reorder point
+        projected_inventory = trial_site.inventory.level - forecasted_demand
+        if projected_inventory < reorder_point:
+            print(
+                f"Forecasted stock low on day {env.now}, placing order for additional {reorder_quantity} units."
+            )
+            # Place the order with enough lead time before the stock is expected to run out
+            env.process(
+                place_order(
+                    env, trial_site, storage_facility, reorder_quantity, lead_time
+                )
+            )
+
+        # Inventory is checked at regular intervals, e.g., daily
         yield env.timeout(1)
 
 
-def place_order(env, storage_facility, quantity, lead_time):
+def place_order(env, trial_site, storage_facility, quantity, lead_time):
     """Place an order for additional stock with a certain lead time."""
     # Wait for the lead time before receiving the order
     yield env.timeout(lead_time)
 
     # Receive the ordered stock
-    yield env.process(storage_facility.receive_order(quantity))
+    yield env.process(trial_site.receive_drug(quantity))
 
 
 def distribute_drug_manufacturer_to_storage(
@@ -272,6 +285,20 @@ def plot_inventory_levels(inventory_log, title):
     plt.title(title)
     plt.xlabel("Simulation Time (days)")
     plt.ylabel("Inventory Level (units)")
+    plt.grid(True)
+    plt.show()
+
+
+def plot_combined_inventory_levels(inventory_logs, labels, title):
+    plt.figure(figsize=(10, 5))  # Set the figure size as needed
+    for inventory_log, label in zip(inventory_logs, labels):
+        times, levels = zip(*inventory_log)  # Unzip the log into times and levels
+        plt.plot(times, levels, marker="o", label=label)
+
+    plt.title(title)
+    plt.xlabel("Simulation Time (days)")
+    plt.ylabel("Inventory Level (units)")
+    plt.legend()  # Display a legend to identify each line
     plt.grid(True)
     plt.show()
 
@@ -335,6 +362,17 @@ def run_simulation():
         )
     )
 
+    env.process(
+        inventory_control(
+            env,
+            trial_site,
+            central_storage,
+            config["inv_control"]["reorder_point"],
+            config["inv_control"]["reorder_quantity"],
+            config["inv_control"]["lead_time"],
+        )
+    )
+
     # Start the enrollment process
     env.process(
         patient_enrollment(
@@ -348,24 +386,48 @@ def run_simulation():
     # Start production and transportation processes
     env.process(manufacturer.produce_drug(config["manufacturer"]["produce"]))
 
-    env.run(until=config["simulation_time"])  # for example, simulating for one year
+    try:
+        env.run(until=config["simulation_time"])  # for example, simulating for one year
+    except ValueError:
+        print("Failed with stockout!")
 
     manufacturer_inventory_levels = manufacturer.inventory_log
     central_storage_inventory_levels = central_storage.inventory_log
     regional_storage_inventory_levels = regional_storage.inventory_log
     site_inventory_levels = trial_site.inventory_log
+    print(trial_site.inventory_log)
 
-    # Call the plotting function for each facility
-    # plot_inventory_levels(
-    #     manufacturer_inventory_levels, "Manufacturer Inventory Levels"
-    # )
-    # plot_inventory_levels(
-    #     central_storage_inventory_levels, "Central Storage Inventory Levels"
-    # )
-    # plot_inventory_levels(
-    #     regional_storage_inventory_levels, "Regional Storage Inventory Levels"
-    # )
-    plot_inventory_levels(site_inventory_levels, "Trial Site Inventory Levels")
+    if config["graph_strategy"] == "separate":
+        # Call the plotting function for each facility
+        plot_inventory_levels(
+            manufacturer_inventory_levels, "Manufacturer Inventory Levels"
+        )
+        plot_inventory_levels(
+            central_storage_inventory_levels, "Central Storage Inventory Levels"
+        )
+        plot_inventory_levels(
+            regional_storage_inventory_levels, "Regional Storage Inventory Levels"
+        )
+        plot_inventory_levels(site_inventory_levels, "Trial Site Inventory Levels")
+    elif config["graph_strategy"] == "combined":
+        # Call the combined plotting function with all facility logs
+        inventory_logs = [
+            manufacturer_inventory_levels,
+            central_storage_inventory_levels,
+            regional_storage_inventory_levels,
+            site_inventory_levels,
+        ]
+
+        labels = [
+            "Manufacturer Inventory",
+            "Central Storage Inventory",
+            "Regional Storage Inventory",
+            "Trial Site Inventory",
+        ]
+
+        plot_combined_inventory_levels(
+            inventory_logs, labels, "Combined Inventory Levels Over Time"
+        )
 
 
 run_simulation()

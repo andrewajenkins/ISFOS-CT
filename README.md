@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project simulates the supply chain for a clinical trial, capturing key processes such as patient enrollment, demand forecasting, inventory management, drug manufacturing, storage, and distribution. The simulation is designed to help trial coordinators plan and optimize the supply chain to ensure that trial sites are adequately stocked with the investigational medicinal product (IMP) without incurring excessive costs due to overstocking or rushed shipments.
+This project simulates the supply chain for a clinical trial, capturing key processes such as patient enrollment, demand forecasting, inventory management, drug manufacturing, storage, and distribution. The simulation is designed to help trial coordinators plan and optimize the supply chain to ensure that trial sites are adequately stocked with the investigational medicinal product (IMP) without incurring excessive costs due to overstocking or rushed shipments. The development of this project was enhanced by the use of advanced AI tools, enabling a more efficient and comprehensive simulation model.
 
 ## Simulation Modules
 
@@ -24,7 +24,6 @@ The simulation consists of several modules, each representing a critical compone
 - Other dependencies as listed in `requirements.txt`
 
 ### Instructions
-
 1. Clone the repository to your local machine.
 2. Install dependencies using `pip install -r requirements.txt`.
 3. Modify the configuration file `data.yaml` as needed for different trial scenarios.
