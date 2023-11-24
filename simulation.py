@@ -128,31 +128,18 @@ class TrialSite(Facility):
 
 class DosageSchedule:
     def __init__(self, dose_amount, dose_interval):
-        """
-        Initializes the dosage schedule for a patient.
-
-        :param dose_amount: The amount of drug administered in each dose.
-        :param dose_interval: The time interval between doses in days.
-        """
+        """Initializes the dosage schedule for a patient."""
         self.dose_amount = dose_amount
         self.dose_interval = dose_interval
         self.next_dose_time = 1  # Tracks the time until the next dose for a patient
 
     def next_dose(self):
-        """
-        Schedules the next dose for a patient.
-
-        :return: The amount of drug for the next dose.
-        """
+        """Schedules the next dose for a patient."""
         self.next_dose_time += self.dose_interval
         return self.dose_amount
 
     def get_next_dose_time(self):
-        """
-        Retrieves the time until the next dose is due.
-
-        :return: The time until the next dose in days.
-        """
+        """Retrieves the time until the next dose is due."""
         return self.next_dose_time
 
 
@@ -196,14 +183,11 @@ class InventoryController:
             f"Placing order for {self.reorder_quantity} units from {self.supplier.name}"
         )
         yield self.env.timeout(self.lead_time)  # Wait for the lead time
-        # yield self.env.process(self.supplier.order_drug(self.reorder_quantity))
         yield self.env.process(self.supplier.dispatch_drug(self.reorder_quantity))
-        # It may be useful to track quantities that have been ordered but not yet received
         self.facility.on_order += self.reorder_quantity
 
     def forecast_demand(self):
         # Simple demand forecast: average usage multiplied by forecast window
-        # You can replace this with more complex logic as needed
         average_daily_usage = self.calculate_average_daily_usage()
         return average_daily_usage * self.forecast_window
 
@@ -231,9 +215,11 @@ def transport_drug(env, source, destination, quantity, transit_times):
     )
 
 
-def patient_enrollment(env, trial_site, mean_interarrival_time, dropout_rate, dosage):
+def patient_enrollment(
+    env, trial_site, mean_interarrival_time, dropout_rate, dosage, target_enrollment
+):
     """Simulates patient enrollment over time."""
-    while True:
+    while trial_site.patients <= target_enrollment:
         # Simulate the time until the next patient enrollment
         interarrival_time = random.expovariate(1.0 / mean_interarrival_time)
 
@@ -290,7 +276,7 @@ def run_simulation():
         dosage_schedule=dosage_schedule,
         capacity=config["site"]["capacity"],
     )
-    regional_storage = StorageFacility(
+    regional_storage = Facility(
         env,
         "regional_storage",
         destination=trial_site,
@@ -298,7 +284,7 @@ def run_simulation():
         capacity=config["regional_storage"]["capacity"],
         transit_times=config["transit_times"],
     )
-    central_storage = StorageFacility(
+    central_storage = Facility(
         env,
         "central_storage",
         destination=regional_storage,
@@ -350,6 +336,7 @@ def run_simulation():
             config["mean_interarrival_time"],
             config["dropout_rate"],
             config["dosage"],
+            config["target_enrollment"],
         )
     )
     # Start production and transportation processes
