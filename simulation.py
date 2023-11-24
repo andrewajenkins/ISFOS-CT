@@ -101,17 +101,6 @@ class StorageFacility:
                 f"Not enough inventory to dispatch {quantity} units on day {self.env.now}."
             )
 
-    def log_inventory_daily(self):
-        """Logs the current inventory level at the end of each day."""
-        while True:
-            # Wait for a day
-            yield self.env.timeout(1)
-            # Log inventory at the end of the day
-            self.inventory_log.append((self.env.now, self.inventory.level))
-            print(
-                f"Inventory at {self.name} on day {self.env.now}: {self.inventory.level}"
-            )
-
     def log_inventory(self, time):
         """Logs the current inventory level along with the simulation time."""
         self.inventory_log.append((time, self.inventory.level))
@@ -146,39 +135,19 @@ class TrialSite:
         self.inventory = simpy.Container(env, init=initial_inventory, capacity=capacity)
         self.inventory_log = []
         self.log_inventory(0)  # Log initial state
+        self.patient_log = []
         self.on_order = 0
-
-    def receive_drug(self, quantity):
-        """Receives a shipment of drugs."""
-        yield self.inventory.put(quantity)
-        print(f"Trial site received {quantity} units of the drug.")
-        self.log_inventory(self.env.now)
 
     def enroll_patient(self, dosage):
         """Handle the logistics of enrolling a new patient."""
         self.patients += 1
+        self.patient_log.append((self.env.now, self.patients))
         dosage_schedule = DosageSchedule(
             dose_amount=dosage["amount"], dose_interval=dosage["interval"]
         )
         self.env.process(
             self.patient_demand(dosage_schedule)
         )  # Start the demand process for the new patient
-
-    def consume_drug(self, amount):
-        """Logic to consume drug and potentially trigger resupply."""
-        # Check if enough drug is available for consumption
-        if self.inventory.level >= amount:
-            # Consume the drug from inventory
-            yield self.inventory.get(amount)
-            # print(f"Consumed {amount} units of drug on day {self.env.now}.")
-        else:
-            print(
-                f"Not enough drug available to consume {amount} units on day {self.env.now}."
-            )
-            # You may want to add logic here to handle the case when there's not enough drug
-
-        # Log the current inventory level after consumption
-        self.log_inventory(self.env.now)
 
     def patient_demand(self, dosage_schedule):
         """Simulates the drug demand for an individual patient."""
@@ -451,7 +420,7 @@ def run_simulation():
     central_storage_inventory_levels = central_storage.inventory_log
     regional_storage_inventory_levels = regional_storage.inventory_log
     site_inventory_levels = trial_site.inventory_log
-    print(trial_site.inventory_log)
+    patient_levels = trial_site.patient_log
 
     if config["graph_strategy"] == "separate":
         # Call the plotting function for each facility
@@ -472,6 +441,7 @@ def run_simulation():
             central_storage_inventory_levels,
             regional_storage_inventory_levels,
             site_inventory_levels,
+            patient_levels,
         ]
 
         labels = [
@@ -479,6 +449,7 @@ def run_simulation():
             "Central Storage Inventory",
             "Regional Storage Inventory",
             "Trial Site Inventory",
+            "Patient Count",
         ]
 
         plot_combined_inventory_levels(

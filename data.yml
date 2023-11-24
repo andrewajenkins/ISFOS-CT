@@ -8,29 +8,27 @@ trial_a:
     reorder_quantity: 5
     lead_time: 3
   manufacturer:
-    prod_rate: 2
-    capacity: 20
-    produce: 10
+    prod_rate: 10
+    capacity: 100
+    produce: 40
   central_storage:
-    capacity: 30
-    initial_inventory: 10
-    initial_order: 20
-    reorder_point: 10
-    reorder_quantity: 10
+    capacity: 100
+    initial_inventory: 40
+    reorder_point: 20
+    reorder_quantity: 40
   regional_storage:
-    capacity: 15
-    initial_inventory: 10
-    initial_order: 10
+    capacity: 60
+    initial_inventory: 20
+    reorder_point: 20
+    reorder_quantity: 20
+  site:
+    capacity: 30
+    initial_inventory: 5
     reorder_point: 10
     reorder_quantity: 10
   dosage:
     amount: 1
     interval: 1
-  site:
-    capacity: 20
-    initial_inventory: 10
-    reorder_point: 10
-    reorder_quantity: 10
   transit_times:
     manufacturer_to_central_storage: 3
     central_storage_to_regional_storage: 2
