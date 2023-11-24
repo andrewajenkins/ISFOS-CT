@@ -4,7 +4,59 @@ import yaml
 import matplotlib.pyplot as plt
 
 
-class ManufacturingFacility:
+class Facility:
+    def __init__(
+        self,
+        env,
+        name,
+        capacity,
+        destination=None,
+        initial_inventory=0,
+        transit_times=None,
+    ):
+        self.env = env
+        self.name = name
+        self.destination = destination
+        self.transit_times = transit_times or {}
+        self.inventory = simpy.Container(env, init=initial_inventory, capacity=capacity)
+        self.inventory_log = []
+        self.log_inventory(0)  # Log initial state
+        self.on_order = 0
+
+    def log_inventory(self, time):
+        """Logs the current inventory level along with the simulation time."""
+        self.inventory_log.append((time, self.inventory.level))
+
+    def receive_drug(self, quantity):
+        """Receives a shipment of drugs and adds it to the inventory."""
+        yield self.inventory.put(quantity)
+        print(
+            f"Received {quantity} units of drug at {self.name} on day {self.env.now}."
+        )
+        self.log_inventory(self.env.now)
+        self.on_order -= quantity
+
+    def dispatch_drug(self, quantity):
+        """Dispatches drugs from the facility to its destination."""
+        if self.inventory.level >= quantity:
+            yield self.inventory.get(quantity)
+            print(
+                f"Dispatched {quantity} units of drug from {self.name} on day {self.env.now}."
+            )
+            self.log_inventory(self.env.now)
+            if self.destination:
+                yield self.env.process(
+                    transport_drug(
+                        self.env, self, self.destination, quantity, self.transit_times
+                    )
+                )
+        else:
+            print(
+                f"Not enough inventory to dispatch {quantity} units on day {self.env.now} at {self.name}."
+            )
+
+
+class ManufacturingFacility(Facility):
     def __init__(self, env, destination, production_rate, capacity, transit_times):
         self.env = env
         self.name = "manufacturer"
@@ -52,12 +104,8 @@ class ManufacturingFacility:
                 f"Not enough inventory to dispatch {quantity} units on day {self.env.now}."
             )
 
-    def log_inventory(self, time):
-        """Logs the current inventory level along with the simulation time."""
-        self.inventory_log.append((time, self.inventory.level))
 
-
-class StorageFacility:
+class StorageFacility(Facility):
     def __init__(
         self, env, name, destination, initial_inventory, capacity, transit_times
     ):
@@ -106,27 +154,7 @@ class StorageFacility:
         self.inventory_log.append((time, self.inventory.level))
 
 
-# Subclass for RegionalStorageFacility
-class RegionalStorageFacility(StorageFacility):
-    def __init__(
-        self, env, name, destination, initial_inventory, capacity, transit_times
-    ):
-        super().__init__(
-            env, name, destination, initial_inventory, capacity, transit_times
-        )
-
-
-# Subclass for CentralStorageFacility
-class CentralStorageFacility(StorageFacility):
-    def __init__(
-        self, env, name, destination, initial_inventory, capacity, transit_times
-    ):
-        super().__init__(
-            env, name, destination, initial_inventory, capacity, transit_times
-        )
-
-
-class TrialSite:
+class TrialSite(Facility):
     def __init__(self, env, initial_inventory, dosage_schedule, capacity):
         self.env = env
         self.name = "trial_site"
@@ -346,7 +374,7 @@ def run_simulation():
         dosage_schedule=dosage_schedule,
         capacity=config["site"]["capacity"],
     )
-    regional_storage = RegionalStorageFacility(
+    regional_storage = StorageFacility(
         env,
         "regional_storage",
         destination=trial_site,
@@ -354,7 +382,7 @@ def run_simulation():
         capacity=config["regional_storage"]["capacity"],
         transit_times=config["transit_times"],
     )
-    central_storage = CentralStorageFacility(
+    central_storage = StorageFacility(
         env,
         "central_storage",
         destination=regional_storage,
