@@ -258,6 +258,7 @@ def plot_combined_inventory_levels(inventory_logs, labels, title):
     plt.legend()  # Display a legend to identify each line
     plt.grid(True)
     plt.show()
+    # plt.savefig("C:\\Users\\Yeyian PC\\Desktop\\combined_inventory_levels.png")
 
 
 def run_simulation():

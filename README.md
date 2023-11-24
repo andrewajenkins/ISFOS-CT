@@ -32,3 +32,20 @@ The simulation consists of several modules, each representing a critical compone
 ## Analyzing Results
 
 The simulation will output logs that show the day-to-day operations of the trial's supply chain, including patient enrollment, drug production, inventory levels, and distribution events. Analyze these logs to assess the performance of the supply chain and make data-driven decisions to optimize operations.
+To add screenshots to your README in a tactful and informative way, you can include them under a dedicated section such as "Sample Outputs" or "Simulation Visualizations". This section can be placed after the "Analyzing Results" section. Here's how you might structure it:
+
+---
+
+## Simulation Visualizations
+
+To provide a clear understanding of the simulation's output and capabilities, below are screenshots from three simulation runs. These visualizations depict the combined inventory levels over time for trial sites, regional storage, and central storage, showcasing the dynamics of the supply chain in different scenarios.
+
+### Simulation Run 1
+![Simulation Run 1](images/combined_inventory_levels-1.png)
+
+### Simulation Run 2
+![Simulation Run 2](images/combined_inventory_levels-2.png)
+
+### Simulation Run 3
+![Simulation Run 3](images/combined_inventory_levels-3.png)
+
