@@ -19,14 +19,19 @@ trial_a:
     capacity: 15
     initial_inventory: 10
     initial_order: 5
+    reorder_point: 4
+    reorder_quantity: 5
   dosage:
     amount: 1
     interval: 1
   site:
     capacity: 10
     initial_inventory: 5
+    reorder_point: 4
+    reorder_quantity: 5
   transit_times:
     manufacturer_to_central_storage: 3
     central_storage_to_regional_storage: 2
+    regional_storage_to_trial_site: 1
     default: 1
   graph_strategy: combined
